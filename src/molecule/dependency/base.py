@@ -21,7 +21,9 @@
 
 import abc
 import os
+import re
 import time
+from pathlib import Path
 
 from molecule import constants, util
 from molecule.logger import get_logger
@@ -80,13 +82,32 @@ class Base(object):
         LOG.error(str(exception), self._sh_command)
         util.sysexit(getattr(exception, "exit_code", constants.RC_UNKNOWN_ERROR))
 
-    @abc.abstractmethod
-    def execute(self):  # pragma: no cover
+    def execute(self):
         """
         Execute ``cmd`` and returns None.
 
         :return: None
         """
+        if os.path.isfile("galaxy.yml"):
+            LOG.info("Collection detected at %s", os.getcwd())
+
+            dist = Path(self._config.scenario.ephemeral_directory) / "dist"
+            dist.mkdir(parents=True, exist_ok=True)
+            result = util.run_command(
+                f"ansible-galaxy collection build -v -f --output-path {dist}",
+                env=self.default_env,
+                check=True,
+                echo=True,
+            )
+            archive = re.search(r"([^\s]+\.tar\.gz)$", result.stdout).groups()[0]
+            # no need to specify destination path because Molecule already defines
+            # custom isolated ANSIBLE_COLLECTIONS_PATH for each scenario
+            util.run_command(
+                f"ansible-galaxy collection install -f {archive}",
+                env=self.default_env,
+                check=True,
+                echo=True,
+            )
 
     @abc.abstractproperty
     def default_options(self):  # pragma: no cover
